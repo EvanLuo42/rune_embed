@@ -1,28 +1,39 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as f
+from torchvision import models
+import torch.nn.functional as F
 
-class RuneEmbedding(nn.Module):
-    def __init__(self, emb_dim: int=128):
+
+class RuneResNetEmbedding(nn.Module):
+    def __init__(self, emb_dim=128, freeze_backbone=False):
         super().__init__()
-        self.cnn = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2),
 
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2),
+        backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2),
+        original_conv1 = backbone.conv1
 
-            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1)),
+        new_conv1 = nn.Conv2d(
+            1, 64, kernel_size=7, stride=2, padding=3, bias=False
         )
-        self.fc = nn.Linear(128, emb_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x: torch.Tensor = self.cnn(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        x = f.normalize(x, dim=1)
-        return x
+        with torch.no_grad():
+            new_conv1.weight[:] = original_conv1.weight.mean(dim=1, keepdim=True)
+
+        backbone.conv1 = new_conv1
+
+        backbone.fc = nn.Identity()
+
+        self.backbone = backbone
+        self.embedding = nn.Linear(512, emb_dim)
+
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
+            for param in self.backbone.layer4.parameters():
+                param.requires_grad = True
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.embedding(x)
+        return F.normalize(x, dim=1)

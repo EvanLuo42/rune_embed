@@ -1,9 +1,9 @@
 import torch
-from rune.model import RuneEmbedding
+from rune.model import RuneResNetEmbedding
 
 def main():
     emb_dim = 128
-    model = RuneEmbedding(emb_dim=emb_dim)
+    model = RuneResNetEmbedding(emb_dim=emb_dim)
     model.load_state_dict(torch.load("weights/rune_embed.pt", map_location="cpu"))
     model.eval()
 
